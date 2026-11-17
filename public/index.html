@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ハイパーロボット</title>
+<style>
+:root{--bg:#14161c;--panel:#1e222b;--line:#2f3542;--text:#eef0f4;--sub:#9aa3b2;--acc:#ffbe0b;
+--red:#e5383b;--green:#2dc653;--blue:#3a86ff;--yellow:#ffbe0b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+body{min-height:100vh}
+button{font:inherit;color:inherit;border:0;border-radius:10px;padding:10px 14px;background:#2c3342;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--acc);color:#222;font-weight:700}
+button.danger{background:#7a2a2f}
+input{font:inherit;width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#10131a;color:var(--text)}
+#app{max-width:600px;margin:0 auto;padding:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+h1{font-size:22px;margin:8px 0 4px;text-align:center}
+.sub{color:var(--sub);font-size:13px}
+label{display:block;font-size:13px;color:var(--sub);margin:10px 0 4px}
+#join{margin-top:8vh}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--sub);padding:2px 4px 8px}
+.top b{color:var(--text)}
+#players{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:8px}
+.pl{flex:0 0 auto;min-width:78px;background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:6px 8px;text-align:center;font-size:13px}
+.pl.active{border-color:var(--acc);box-shadow:0 0 0 2px rgba(255,190,11,.25)}
+.pl.off{opacity:.45}
+.pl .n{font-weight:700;white-space:nowrap;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+.pl .s{font-size:20px;font-weight:800;line-height:1.1}
+.pl .d{font-size:12px;color:var(--acc);height:16px}
+#board{width:100%;aspect-ratio:1;display:block;border-radius:10px;touch-action:none;background:#e9e4d6}
+#status{text-align:center;padding:8px 4px 2px}
+#goalline{font-size:15px;font-weight:700}
+#timer{font-size:38px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+#timer.warn{color:#ff6b6b}
+#msg{min-height:20px;font-size:14px;color:#d8dde7;margin-top:2px}
+.step{display:flex;align-items:center;gap:10px;justify-content:center;margin:6px 0}
+.step button{width:52px;height:52px;font-size:26px;font-weight:800}
+.step .num{font-size:44px;font-weight:800;min-width:90px;text-align:center;font-variant-numeric:tabular-nums}
+.robots{display:flex;gap:8px;justify-content:center;margin:6px 0}
+.rb{width:52px;height:52px;border-radius:50%;border:4px solid transparent;padding:0}
+.rb.sel{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3)}
+.dpad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(3,56px);gap:6px;justify-content:center;margin:6px 0}
+.dpad button{font-size:24px;padding:0}
+.rank{padding:4px 0;font-size:16px;display:flex;justify-content:space-between;border-bottom:1px solid var(--line)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;border:1px solid #555;padding:10px 16px;border-radius:12px;font-size:14px;max-width:90vw;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
+#toast.show{opacity:1}
+.hint{font-size:12px;color:var(--sub);text-align:center;margin-top:4px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+
+<div id="join" class="card">
+  <h1>🤖 ハイパーロボット</h1>
+  <div class="sub" style="text-align:center">同じ合言葉を入力した人が同じ卓に入れます</div>
+  <label>なまえ</label><input id="inName" maxlength="12" placeholder="例: たろう" autocomplete="off">
+  <label>合言葉(卓名)</label><input id="inRoom" maxlength="30" placeholder="例: やまだ家" autocomplete="off">
+  <div style="height:12px"></div>
+  <button class="primary" id="btnJoin" style="width:100%;padding:14px">卓に入る / 卓を作る</button>
+  <div class="hint">まだ誰もいない合言葉なら、あなたが新しい卓のホストになります</div>
+</div>
+
+<div id="game" class="hidden">
+  <div class="top"><span>卓: <b id="roomName"></b></span><span id="roundInfo"></span></div>
+  <div id="players"></div>
+  <canvas id="board"></canvas>
+  <div id="status">
+    <div id="goalline"></div>
+    <div id="timer"></div>
+    <div id="msg"></div>
+  </div>
+  <div id="controls" class="card"></div>
+</div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+const COLORS=['red','green','blue','yellow'];
+const CJ={red:'赤',green:'緑',blue:'青',yellow:'黄',wild:'全色'};
+const SJ={circle:'●',square:'■',triangle:'▲',star:'★',wild:'◎'};
+const CV={red:'#e5383b',green:'#2dc653',blue:'#3a86ff',yellow:'#ffbe0b'};
+const $=id=>document.getElementById(id);
+let ws=null,S=null,offset=0,selected=null,myN=5,reconnectTimer=null,joinInfo=null;
+
+// ---------- 接続 ----------
+function tokenKey(room){return 'hr_token_'+room.normalize('NFKC').trim().toLowerCase()}
+function connect(name,room){
+  joinInfo={name,room};
+  try{localStorage.setItem('hr_name',name);localStorage.setItem('hr_room',room)}catch(e){}
+  const url=(location.protocol==='https:'?'wss://':'ws://')+location.host;
+  ws=new WebSocket(url);
+  ws.onopen=()=>{
+    let token=null;try{token=localStorage.getItem(tokenKey(room))}catch(e){}
+    ws.send(JSON.stringify({t:'join',name,room,token}));
+  };
+  ws.onmessage=ev=>{
+    const m=JSON.parse(ev.data);
+    if(m.t==='joined'){try{localStorage.setItem(tokenKey(joinInfo.room),m.token)}catch(e){}}
+    else if(m.t==='error'){toast(m.msg); if(!S){ws.close();joinInfo=null;}}
+    else if(m.t==='state'){onState(m)}
+  };
+  ws.onclose=()=>{
+    if(joinInfo){ clearTimeout(reconnectTimer); reconnectTimer=setTimeout(()=>connect(joinInfo.name,joinInfo.room),1500); if(S)toast('再接続中…'); }
+  };
+}
+const send=o=>ws&&ws.readyState===1&&ws.send(JSON.stringify(o));
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),2600)}
+
+$('btnJoin').onclick=()=>{
+  const n=$('inName').value.trim(),r=$('inRoom').value.trim();
+  if(!n||!r)return toast('なまえと合言葉を入力してください');
+  connect(n,r);
+};
+try{$('inName').value=localStorage.getItem('hr_name')||'';$('inRoom').value=localStorage.getItem('hr_room')||''}catch(e){}
+
+// ---------- 状態 ----------
+let prevRobots=null,anims={};
+function onState(m){
+  offset=m.serverNow-Date.now();
+  const first=!S;
+  // ロボット移動アニメ
+  if(m.robots){
+    for(const c of COLORS){
+      const to=m.robots[c];
+      const old=prevRobots&&prevRobots[c];
+      if(old&&(old[0]!==to[0]||old[1]!==to[1])){
+        const cur=robotPos(c);
+        const dist=Math.abs(to[0]-cur[0])+Math.abs(to[1]-cur[1]);
+        anims[c]={fr:cur[0],fc:cur[1],tr:to[0],tc:to[1],t0:performance.now(),dur:Math.min(450,90+dist*45)};
+      }
+    }
+    prevRobots=JSON.parse(JSON.stringify(m.robots));
+  }else prevRobots=null;
+  const prevPhase=S&&S.phase;
+  S=m;
+  if(first){$('join').classList.add('hidden');$('game').classList.remove('hidden')}
+  if(prevPhase!==m.phase||first){selected=null;controlsKey=''}
+  if(m.bestN!==null){ if(myN>=m.bestN)myN=Math.max(m.minDecl,m.bestN-1) } else if(myN<m.minDecl) myN=m.minDecl;
+  if(m.phase==='thinking'&&prevPhase!=='thinking'&&m.bestN===null)myN=Math.max(m.minDecl,5);
+  render();
+}
+
+function me(){return S.players.find(p=>p.id===S.you)}
+function pname(id){const p=S.players.find(p=>p.id===id);return p?p.name:'?'}
+
+// ---------- 画面 ----------
+function render(){
+  $('roomName').textContent=S.room;
+  $('roundInfo').textContent=S.board?`ラウンド${S.round} ・ 残りチップ${S.chipsLeft}`:'';
+  renderPlayers();
+  renderStatus();
+  renderControls();
+  requestDraw();
+}
+function renderPlayers(){
+  const dm={};S.decls.forEach(d=>dm[d.id]=d.n);
+  $('players').innerHTML=S.players.map(p=>`<div class="pl ${p.id===S.active?'active':''} ${p.connected?'':'off'}">
+    <div class="n">${p.id===S.hostId?'👑':''}${esc(p.name)}${p.id===S.you?'(自分)':''}</div>
+    <div class="s">${p.score}</div><div class="d">${dm[p.id]?dm[p.id]+'手':''}</div></div>`).join('');
+}
+function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function renderStatus(){
+  const g=S.goal;
+  $('goalline').innerHTML=g?(g.color==='wild'?'目標: 全色 ◎ (どのロボットでもOK)':`目標: <span style="color:${CV[g.color]}">${CJ[g.color]}${SJ[g.shape]}</span> に${CJ[g.color]}ロボットを`):'';
+  $('msg').textContent=S.msg||'';
+}
+setInterval(()=>{
+  if(!S)return;
+  const t=$('timer');
+  if(S.deadline&&(S.phase==='countdown'||S.phase==='executing')){
+    const s=Math.max(0,Math.ceil((S.deadline-(Date.now()+offset))/1000));
+    t.textContent=(S.phase==='executing'?'手番 残り ':'')+s+'秒';
+    t.style.fontSize=S.phase==='executing'?'22px':'';
+    t.classList.toggle('warn',S.phase==='countdown'&&s<=10);
+  }else if(S.phase==='thinking'){t.textContent='考え中…';t.style.fontSize='22px';t.classList.remove('warn')}
+  else{t.textContent='';t.classList.remove('warn')}
+},200);
+
+let controlsKey='';
+function renderControls(){
+  const c=$('controls');
+  const isHost=S.hostId===S.you;
+  let html='';
+  const ph=S.phase;
+  if(ph==='lobby'){
+    const n=S.players.length;
+    const win=n<=2?'8枚':n===3?'6枚':n===4?'5枚':'全チップが無くなるまで';
+    html=`<div style="text-align:center"><div style="font-size:16px;font-weight:700">参加者 ${n}人</div>
+      <div class="sub" style="margin:4px 0 10px">勝利条件(現在の人数): ${win}を先取り${n>=5?'':' (人数が変わると変化)'}<br>友達に合言葉「<b style="color:#fff">${esc(S.room)}</b>」を伝えて入ってもらおう</div>
+      ${isHost?'<button class="primary" id="bStart" style="width:100%;padding:14px">ゲーム開始</button>':'<div class="sub">ホストが開始するのを待っています…</div>'}</div>`;
+  }else if(ph==='thinking'||ph==='countdown'){
+    const maxN=S.bestN!==null?S.bestN-1:99;
+    const can=myN>=S.minDecl&&myN<=maxN;
+    html=`<div style="text-align:center" class="sub">${S.bestN===null?'最短手数が分かったら宣言!(最初の宣言で1分タイマー開始)':`現在の最短宣言: ${S.bestN}手 (${pname(S.decls[0]?S.decls[0].id:'')}) / それより少ない手数のみ宣言可`}</div>
+      ${S.directOne?'<div class="hint" style="color:#ffd166">※ 1手で直接ゴールできる配置です。2手以上の別ルートを探してください</div>':''}
+      <div class="step"><button id="bMinus">−</button><div class="num" id="nNum">${myN}</div><button id="bPlus">＋</button></div>
+      <button class="primary" id="bDecl" style="width:100%;padding:14px" ${can?'':'disabled'}>${myN}手で宣言する</button>
+      ${isHost?'<div style="margin-top:8px"><button id="bSkip" style="width:100%">このチップをスキップ(ホスト)</button></div>':''}`;
+  }else if(ph==='executing'){
+    const mine=S.active===S.you;
+    const rest=S.queue.slice(1).map(pname).join(' → ');
+    html=`<div style="text-align:center;font-size:16px;font-weight:700">${esc(pname(S.active))}さんの番: ${S.movesUsed} / ${S.limit}手</div>
+      ${rest?`<div class="hint">次の順番: ${esc(rest)}</div>`:''}`;
+    if(mine){
+      html+=`<div class="robots">${COLORS.map(c=>`<button class="rb ${selected===c?'sel':''}" data-c="${c}" style="background:${CV[c]}"></button>`).join('')}</div>
+      <div class="dpad"><span></span><button data-d="0">▲</button><span></span><button data-d="3">◀</button><span></span><button data-d="1">▶</button><span></span><button data-d="2">▼</button><span></span></div>
+      <div class="hint">ロボットを選んで矢印 / 盤面でスワイプ / 矢印キー</div>
+      <div style="margin-top:8px"><button class="danger" id="bGive" style="width:100%">あきらめる</button></div>`;
+    }else html+='<div class="hint" style="margin-top:8px">操作を見守ろう…</div>';
+  }else if(ph==='roundEnd'){
+    html='<div style="text-align:center" class="sub">まもなく次のラウンド…</div>';
+  }else if(ph==='gameEnd'){
+    const arr=[...S.players].sort((a,b)=>b.score-a.score);
+    html=`<div style="font-size:18px;font-weight:800;text-align:center;margin-bottom:6px">🏆 結果</div>`+
+      arr.map((p,i)=>`<div class="rank"><span>${i+1}位 ${esc(p.name)}</span><b>${p.score}枚</b></div>`).join('')+
+      (isHost?'<button class="primary" id="bAgain" style="width:100%;padding:14px;margin-top:10px">ロビーに戻る(もう一度)</button>':'<div class="sub" style="text-align:center;margin-top:8px">ホストの操作を待っています</div>');
+  }
+  const key=ph+'|'+html;
+  if(key===controlsKey)return;
+  // 数字ステップ操作中は全体再描画を避けるため、キー不一致時のみ再構築
+  controlsKey=key;
+  c.innerHTML=html;
+  bind();
+}
+function bind(){
+  const q=id=>$(id);
+  if(q('bStart'))q('bStart').onclick=()=>send({t:'start'});
+  if(q('bAgain'))q('bAgain').onclick=()=>send({t:'lobby'});
+  if(q('bSkip'))q('bSkip').onclick=()=>{if(confirm('このチップをスキップしますか?'))send({t:'skip'})};
+  if(q('bGive'))q('bGive').onclick=()=>send({t:'giveup'});
+  if(q('bMinus'))q('bMinus').onclick=()=>{myN=Math.max(S.minDecl,myN-1);controlsKey='';renderControls()};
+  if(q('bPlus'))q('bPlus').onclick=()=>{const mx=S.bestN!==null?S.bestN-1:99;myN=Math.min(mx,myN+1);controlsKey='';renderControls()};
+  if(q('bDecl'))q('bDecl').onclick=()=>send({t:'declare',n:myN});
+  document.querySelectorAll('.rb').forEach(b=>b.onclick=()=>{selected=b.dataset.c;controlsKey='';renderControls();requestDraw()});
+  document.querySelectorAll('.dpad button').forEach(b=>b.onclick=()=>doMove(+b.dataset.d));
+}
+function doMove(d,robot){
+  robot=robot||selected;
+  if(!robot){toast('ロボットを選んでください');return}
+  if(!S||S.phase!=='executing'||S.active!==S.you)return;
+  send({t:'move',robot,dir:d});
+}
+
+// ---------- 盤面描画 ----------
+const cv=$('board'),ctx=cv.getContext('2d');
+let drawQueued=false;
+function requestDraw(){if(!drawQueued){drawQueued=true;requestAnimationFrame(()=>{drawQueued=false;draw()})}}
+function robotPos(c){
+  const a=anims[c];
+  if(a){
+    const p=Math.min(1,(performance.now()-a.t0)/a.dur),e=1-Math.pow(1-p,3);
+    return [a.fr+(a.tr-a.fr)*e,a.fc+(a.tc-a.fc)*e];
+  }
+  return S&&S.robots?S.robots[c]:[0,0];
+}
+function shapePath(shape,x,y,s){
+  ctx.beginPath();
+  if(shape==='circle')ctx.arc(x,y,s,0,Math.PI*2);
+  else if(shape==='square')ctx.rect(x-s*.85,y-s*.85,s*1.7,s*1.7);
+  else if(shape==='triangle'){ctx.moveTo(x,y-s);ctx.lineTo(x+s*1.05,y+s*.8);ctx.lineTo(x-s*1.05,y+s*.8);ctx.closePath()}
+  else if(shape==='star'){for(let i=0;i<10;i++){const r=i%2?s*.45:s*1.1,a=-Math.PI/2+i*Math.PI/5;ctx[i?'lineTo':'moveTo'](x+Math.cos(a)*r,y+Math.sin(a)*r)}ctx.closePath()}
+}
+function drawTarget(t,x,y,s,alpha){
+  ctx.save();ctx.globalAlpha=alpha;
+  if(t.color==='wild'){
+    COLORS.forEach((c,i)=>{ctx.beginPath();ctx.moveTo(x,y);ctx.arc(x,y,s,i*Math.PI/2-Math.PI/2,(i+1)*Math.PI/2-Math.PI/2);ctx.closePath();ctx.fillStyle=CV[c];ctx.fill()});
+    ctx.strokeStyle='#222';ctx.lineWidth=Math.max(1,s*.12);ctx.beginPath();ctx.arc(x,y,s,0,Math.PI*2);ctx.stroke();
+  }else{
+    shapePath(t.shape,x,y,s);ctx.fillStyle=CV[t.color];ctx.fill();ctx.strokeStyle='#222';ctx.lineWidth=Math.max(1,s*.12);ctx.stroke();
+  }
+  ctx.restore();
+}
+function draw(){
+  const rect=cv.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  const W=Math.round(rect.width*dpr);
+  if(cv.width!==W){cv.width=W;cv.height=W}
+  const cs=W/16;
+  ctx.clearRect(0,0,W,W);
+  ctx.fillStyle='#ece7d8';ctx.fillRect(0,0,W,W);
+  if(!S||!S.board){
+    ctx.fillStyle='#555';ctx.font=`${cs*.9}px sans-serif`;ctx.textAlign='center';ctx.fillText('ゲーム開始待ち…',W/2,W/2);
+    ctx.fillStyle='#2b2b33';ctx.fillRect(7*cs,7*cs,2*cs,2*cs);return;
+  }
+  // グリッド
+  ctx.strokeStyle='#cfc8b4';ctx.lineWidth=1;ctx.beginPath();
+  for(let i=0;i<=16;i++){ctx.moveTo(i*cs,0);ctx.lineTo(i*cs,W);ctx.moveTo(0,i*cs);ctx.lineTo(W,i*cs)}
+  ctx.stroke();
+  // 中央
+  ctx.fillStyle='#2b2b33';ctx.fillRect(7*cs,7*cs,2*cs,2*cs);
+  // 目標マス
+  const g=S.goal;
+  S.board.targets.forEach(t=>{
+    const isGoal=g&&t.r===g.r&&t.c===g.c;
+    if(isGoal){ctx.fillStyle='rgba(255,190,11,.35)';ctx.fillRect(t.c*cs,t.r*cs,cs,cs);ctx.strokeStyle='#ff9f1c';ctx.lineWidth=cs*.09;ctx.strokeRect(t.c*cs+cs*.05,t.r*cs+cs*.05,cs*.9,cs*.9)}
+    drawTarget(t,(t.c+.5)*cs,(t.r+.5)*cs,cs*.32,isGoal?1:.6);
+  });
+  if(g)drawTarget(g,8*cs,8*cs,cs*.85,1);
+  // 壁
+  ctx.strokeStyle='#3b3226';ctx.lineCap='round';ctx.lineWidth=cs*.13;ctx.beginPath();
+  const w=S.board.walls;
+  for(let r=0;r<16;r++)for(let c=0;c<16;c++){
+    const m=w[r*16+c],x=c*cs,y=r*cs;
+    if(m&1){ctx.moveTo(x,y);ctx.lineTo(x+cs,y)}
+    if(m&2){ctx.moveTo(x+cs,y);ctx.lineTo(x+cs,y+cs)}
+    if(m&4){ctx.moveTo(x,y+cs);ctx.lineTo(x+cs,y+cs)}
+    if(m&8){ctx.moveTo(x,y);ctx.lineTo(x,y+cs)}
+  }
+  ctx.stroke();
+  ctx.lineWidth=cs*.16;ctx.strokeRect(0,0,W,W);
+  // ロボット
+  let animating=false;const now=performance.now();
+  for(const c of COLORS){
+    if(anims[c]){if(now-anims[c].t0>=anims[c].dur)delete anims[c];else animating=true}
+    const [r,col]=robotPos(c);
+    const x=(col+.5)*cs,y=(r+.5)*cs,rad=cs*.36;
+    ctx.beginPath();ctx.arc(x,y+cs*.04,rad,0,Math.PI*2);ctx.fillStyle='rgba(0,0,0,.25)';ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);ctx.fillStyle=CV[c];ctx.fill();
+    ctx.strokeStyle='#1a1a1a';ctx.lineWidth=cs*.07;ctx.stroke();
+    ctx.beginPath();ctx.arc(x-rad*.3,y-rad*.3,rad*.28,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,.45)';ctx.fill();
+    if(selected===c&&S.phase==='executing'){ctx.beginPath();ctx.arc(x,y,rad+cs*.08,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=cs*.08;ctx.stroke()}
+  }
+  if(animating)requestDraw();
+}
+window.addEventListener('resize',requestDraw);
+
+// ---------- 入力 ----------
+let ptr=null;
+function cellAt(e){const r=cv.getBoundingClientRect();return[Math.floor((e.clientY-r.top)/r.height*16),Math.floor((e.clientX-r.left)/r.width*16)]}
+function robotAtCell(r,c){if(!S||!S.robots)return null;return COLORS.find(k=>S.robots[k][0]===r&&S.robots[k][1]===c)||null}
+cv.addEventListener('pointerdown',e=>{
+  if(!S||S.phase!=='executing'||S.active!==S.you)return;
+  const [r,c]=cellAt(e);ptr={x:e.clientX,y:e.clientY,robot:robotAtCell(r,c)};
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointerup',e=>{
+  if(!ptr)return;const p=ptr;ptr=null;
+  const dx=e.clientX-p.x,dy=e.clientY-p.y,len=Math.hypot(dx,dy);
+  if(len<14){ if(p.robot){selected=p.robot;controlsKey='';renderControls();requestDraw()} return }
+  const d=Math.abs(dx)>Math.abs(dy)?(dx>0?1:3):(dy>0?2:0);
+  const robot=p.robot||selected;
+  if(p.robot){selected=p.robot;controlsKey='';renderControls();requestDraw()}
+  doMove(d,robot);
+});
+window.addEventListener('keydown',e=>{
+  if(!S||S.phase!=='executing'||S.active!==S.you)return;
+  const m={ArrowUp:0,ArrowRight:1,ArrowDown:2,ArrowLeft:3,w:0,d:1,s:2,a:3};
+  if(e.key in m){e.preventDefault();doMove(m[e.key])}
+  else if('1234'.includes(e.key)&&e.key.length===1){selected=COLORS[+e.key-1];controlsKey='';renderControls();requestDraw()}
+});
+draw();
+</script>
+</body>
+</html>
