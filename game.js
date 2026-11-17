@@ -199,4 +199,39 @@ function directOne(board, robots, goal) {
   return false;
 }
 
-module.exports = { N, DIRS, COLORS, SHAPES, isCenter, shuffle, slide, reach, generateBoard, placeRobots, generateGame, occupiedSet, directOne };
+// 最短手数(全ロボット操作可)をBFSで求める。maxD手以内に無い/時間切れは -1
+function solveLen(board, robots, goal, maxD, ms) {
+  const t0 = Date.now();
+  const gi = goal.r * N + goal.c;
+  const gc = goal.color === 'wild' ? -1 : COLORS.indexOf(goal.color);
+  const d1 = directOne(board, robots, goal);
+  const enc = (p) => ((p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]) >>> 0;
+  const start = COLORS.map((c) => robots[c][0] * N + robots[c][1]);
+  let fr = [start];
+  const seen = new Set([enc(start)]);
+  const occ = new Set();
+  for (let d = 1; d <= maxD; d++) {
+    const nx = [];
+    for (const s of fr) {
+      for (let i = 0; i < 4; i++) {
+        occ.clear();
+        for (let j = 0; j < 4; j++) if (j !== i) occ.add(s[j]);
+        for (let dir = 0; dir < 4; dir++) {
+          const [r, c] = slide(board.walls, occ, s[i] >> 4, s[i] & 15, dir);
+          const k = r * N + c;
+          if (k === s[i]) continue;
+          if (k === gi && (gc < 0 || gc === i) && !(d1 && d < 2)) return d;
+          const n = s.slice();
+          n[i] = k;
+          const e = enc(n);
+          if (!seen.has(e)) { seen.add(e); nx.push(n); }
+        }
+      }
+      if (Date.now() - t0 > ms) return -1;
+    }
+    fr = nx;
+  }
+  return -1;
+}
+
+module.exports = { solveLen, N, DIRS, COLORS, SHAPES, isCenter, shuffle, slide, reach, generateBoard, placeRobots, generateGame, occupiedSet, directOne };

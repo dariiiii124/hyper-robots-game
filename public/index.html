@@ -202,6 +202,7 @@ function renderControls(){
       ${S.directOne?'<div class="hint" style="color:#ffd166">※ 1手で直接ゴールできる配置です。2手以上の別ルートを探してください</div>':''}
       <div class="step"><button id="bMinus">−</button><div class="num" id="nNum">${myN}</div><button id="bPlus">＋</button></div>
       <button class="primary" id="bDecl" style="width:100%;padding:14px" ${can?'':'disabled'}>${myN}手で宣言する</button>
+      ${ph==='countdown'?(()=>{const vs=S.skipVotes||[];const tot=S.players.filter(p=>p.connected).length;const mine=vs.includes(S.you);return `<div style="margin-top:8px"><button id="bVote" style="width:100%;${mine?'background:#2d6a4f':''}">${mine?'✔ ':''}みんなOKならタイマーを飛ばす (${vs.length}/${tot})</button></div>`})():''}
       ${isHost?'<div style="margin-top:8px"><button id="bSkip" style="width:100%">このチップをスキップ(ホスト)</button></div>':''}`;
   }else if(ph==='executing'){
     const mine=S.active===S.you;
@@ -234,6 +235,7 @@ function bind(){
   if(q('bStart'))q('bStart').onclick=()=>send({t:'start'});
   if(q('bAgain'))q('bAgain').onclick=()=>send({t:'lobby'});
   if(q('bSkip'))q('bSkip').onclick=()=>{if(confirm('このチップをスキップしますか?'))send({t:'skip'})};
+  if(q('bVote'))q('bVote').onclick=()=>send({t:'skiptimer'});
   if(q('bGive'))q('bGive').onclick=()=>send({t:'giveup'});
   if(q('bMinus'))q('bMinus').onclick=()=>{myN=Math.max(S.minDecl,myN-1);controlsKey='';renderControls()};
   if(q('bPlus'))q('bPlus').onclick=()=>{const mx=S.bestN!==null?S.bestN-1:99;myN=Math.min(mx,myN+1);controlsKey='';renderControls()};

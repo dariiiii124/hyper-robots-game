@@ -10,8 +10,8 @@ const PORT = process.env.PORT || 3000;
 const COUNTDOWN_MS = 60 * 1000; // 最初の宣言から
 const EXEC_MS = 90 * 1000; // 1人の手番の持ち時間
 const ROUND_END_MS = 6 * 1000;
-// ラウンド終了(成功)後にロボットを元の位置へ戻すか。false にすると動かした位置のまま次ラウンドへ。
-const RESET_ON_SUCCESS = true;
+// 成功後にロボットを元の位置へ戻すか。false=成功時の位置のまま次ラウンドへ(失敗時は常に手番開始前に戻す)
+const RESET_ON_SUCCESS = false;
 const MAX_PLAYERS = 12;
 
 const server = http.createServer((req, res) => {
@@ -35,7 +35,7 @@ function newRoom(code) {
   return {
     code, players: [], hostId: null, phase: 'lobby', board: null, startRobots: null, robots: null,
     deck: [], goal: null, directOne: false, decls: new Map(), bestN: null, queue: [], active: null,
-    limit: 0, movesUsed: 0, deadline: 0, msg: '', round: 0, winScore: 0, roundResult: null, timer: null, gcTimer: null,
+    limit: 0, movesUsed: 0, deadline: 0, msg: '', round: 0, winScore: 0, roundResult: null, timer: null, gcTimer: null, skipVotes: new Set(), optimal: null, lastOpt: 0,
   };
 }
 
@@ -47,7 +47,7 @@ function snapshot(room, p) {
     board: room.board, robots: room.robots, goal: room.goal, directOne: room.directOne,
     minDecl: room.directOne ? 2 : 1, bestN: room.bestN, chipsLeft: room.deck.length, winScore: room.winScore,
     decls, queue: room.queue, active: room.active, limit: room.limit, movesUsed: room.movesUsed,
-    deadline: room.deadline, msg: room.msg, round: room.round, roundResult: room.roundResult,
+    deadline: room.deadline, skipVotes: [...room.skipVotes], msg: room.msg, round: room.round, roundResult: room.roundResult,
   };
 }
 
@@ -74,10 +74,33 @@ function startGame(room) {
   startRound(room);
 }
 
+// 残りチップの最短手数を調べ、5〜8手くらいの歯ごたえのあるものを優先して出す(前回と同じ手数は避ける)
+function pickGoal(room) {
+  const info = room.deck.map((idx, pos) => {
+    const t = room.board.targets[idx];
+    const blocked = G.COLORS.some((c) => room.robots[c][0] === t.r && room.robots[c][1] === t.c && (t.color === 'wild' || t.color === c));
+    return { pos, t, blocked, L: blocked ? -1 : G.solveLen(room.board, room.robots, t, 9, 400) };
+  });
+  const ok = info.filter((x) => !x.blocked && x.L > 0);
+  const pool = (list) => { const d = list.filter((x) => x.L !== room.lastOpt); return d.length ? d : list; };
+  let pick;
+  const band = ok.filter((x) => x.L >= 5 && x.L <= 8);
+  const hard = ok.filter((x) => x.L >= 5);
+  if (band.length) pick = pool(band);
+  else if (hard.length) pick = pool(hard);
+  else if (ok.length) pick = pool(ok.filter((x) => x.L === Math.max(...ok.map((y) => y.L))));
+  else pick = info.filter((x) => !x.blocked).length ? info.filter((x) => !x.blocked) : info;
+  const c = pick[Math.floor(Math.random() * pick.length)];
+  room.deck.splice(c.pos, 1);
+  room.goal = c.t;
+  room.optimal = c.L > 0 ? c.L : null;
+  if (c.L > 0) room.lastOpt = c.L;
+}
+
 function startRound(room) {
   room.round++;
-  room.goal = room.board.targets[room.deck.pop()];
   room.robots = clone(room.startRobots);
+  pickGoal(room);
   room.directOne = G.directOne(room.board, room.robots, room.goal);
   room.decls = new Map();
   room.bestN = null;
@@ -87,6 +110,7 @@ function startRound(room) {
   room.movesUsed = 0;
   room.deadline = 0;
   room.roundResult = null;
+  room.skipVotes = new Set();
   room.phase = 'thinking';
   room.msg = `ラウンド${room.round}: 目標が公開されました`;
   clearTimeout(room.timer);
@@ -100,6 +124,7 @@ function declare(room, p, n) {
   if (room.bestN !== null && n >= room.bestN) return `${room.bestN}手より小さい手数のみ宣言できます`;
   room.decls.set(p.id, { n, t: Date.now() });
   room.bestN = n;
+  room.skipVotes = new Set();
   room.msg = `${p.name}さんが ${n}手 を宣言!`;
   if (room.phase === 'thinking') {
     room.phase = 'countdown';
@@ -143,14 +168,15 @@ function endRound(room, winner, msg) {
   room.phase = 'roundEnd';
   room.active = null;
   room.deadline = Date.now() + ROUND_END_MS;
+  const optTxt = room.optimal ? ` (最短は${room.optimal}手でした)` : '';
   if (winner) {
     winner.score++;
     if (!RESET_ON_SUCCESS) room.startRobots = clone(room.robots);
     room.roundResult = { winnerId: winner.id, moves: room.movesUsed };
-    room.msg = msg || `${winner.name}さんがチップ獲得!`;
+    room.msg = (msg || `${winner.name}さんがチップ獲得!`) + optTxt;
   } else {
     room.roundResult = { winnerId: null };
-    room.msg = msg || '成功者なし';
+    room.msg = (msg || '成功者なし') + optTxt;
   }
   setTimer(room, ROUND_END_MS, () => nextRound(room));
 }
@@ -243,6 +269,13 @@ wss.on('connection', (ws) => {
         break;
       case 'declare': err = declare(room, me, Number(m.n)); break;
       case 'move': err = handleMove(room, me, m.robot, Number(m.dir)); break;
+      case 'skiptimer':
+        if (room.phase === 'countdown') {
+          if (room.skipVotes.has(me.id)) room.skipVotes.delete(me.id); else room.skipVotes.add(me.id);
+          const need = room.players.filter((p) => p.connected);
+          if (need.length && need.every((p) => room.skipVotes.has(p.id))) { clearTimeout(room.timer); beginExecution(room); }
+        }
+        break;
       case 'giveup':
         if (room.phase === 'executing' && room.active === me.id) failTurn(room, 'ギブアップ');
         break;
