@@ -220,6 +220,7 @@ function renderControls(){
     if(mine){
       html+=`<div class="robots">${COLORS.map(c=>`<button class="rb ${selected===c?'sel':''}" data-c="${c}" style="background:${CV[c]}"></button>`).join('')}</div>
       <div class="dpad"><span></span><button data-d="0">▲</button><span></span><button data-d="3">◀</button><span></span><button data-d="1">▶</button><span></span><button data-d="2">▼</button><span></span></div>
+      <div class="row"><button id="bUndo">↩ 1手戻す</button><button id="bRestart">⟲ 最初から</button></div>
       <div class="hint">ロボットを選んで矢印 / 盤面でスワイプ / 矢印キー</div>
       <div style="margin-top:8px"><button class="danger" id="bGive" style="width:100%">あきらめる</button></div>`;
     }else html+='<div class="hint" style="margin-top:8px">操作を見守ろう…</div>';
@@ -248,6 +249,8 @@ function bind(){
   if(q('bCopy'))q('bCopy').onclick=()=>{const t=`ハイパーロボットやろう!\n${location.href}\n合言葉: ${S.room}`;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('コピーしました')).catch(()=>{prompt('コピーして送ってください',t)})};
   if(q('bLeave'))q('bLeave').onclick=()=>{joinInfo=null;try{ws.close()}catch(e){}S=null;prevRobots=null;$('game').classList.add('hidden');$('join').classList.remove('hidden')};
   if(q('bVote'))q('bVote').onclick=()=>send({t:'skiptimer'});
+  if(q('bUndo'))q('bUndo').onclick=()=>send({t:'undo'});
+  if(q('bRestart'))q('bRestart').onclick=()=>send({t:'restart'});
   if(q('bGive'))q('bGive').onclick=()=>send({t:'giveup'});
   if(q('bMinus'))q('bMinus').onclick=()=>{myN=Math.max(S.minDecl,myN-1);controlsKey='';renderControls()};
   if(q('bPlus'))q('bPlus').onclick=()=>{const mx=S.bestN!==null?S.bestN-1:99;myN=Math.min(mx,myN+1);controlsKey='';renderControls()};
@@ -364,6 +367,7 @@ cv.addEventListener('pointerup',e=>{
 });
 window.addEventListener('keydown',e=>{
   if(!S||S.phase!=='executing'||S.active!==S.you)return;
+  if(e.key==='z'){send({t:'undo'});return}
   const m={ArrowUp:0,ArrowRight:1,ArrowDown:2,ArrowLeft:3,w:0,d:1,s:2,a:3};
   if(e.key in m){e.preventDefault();doMove(m[e.key])}
   else if('1234'.includes(e.key)&&e.key.length===1){selected=COLORS[+e.key-1];controlsKey='';renderControls();requestDraw()}

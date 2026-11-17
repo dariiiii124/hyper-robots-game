@@ -35,7 +35,7 @@ function newRoom(code) {
   return {
     code, players: [], hostId: null, phase: 'lobby', board: null, startRobots: null, robots: null,
     deck: [], goal: null, directOne: false, decls: new Map(), bestN: null, queue: [], active: null,
-    limit: 0, movesUsed: 0, deadline: 0, msg: '', round: 0, winScore: 0, roundResult: null, timer: null, gcTimer: null, skipVotes: new Set(), optimal: null, lastOpt: 0,
+    limit: 0, movesUsed: 0, history: [], deadline: 0, msg: '', round: 0, winScore: 0, roundResult: null, timer: null, gcTimer: null, skipVotes: new Set(), optimal: null, lastOpt: 0,
   };
 }
 
@@ -142,6 +142,7 @@ function startTurn(room) {
   room.active = room.queue[0];
   room.limit = room.decls.get(room.active).n;
   room.movesUsed = 0;
+  room.history = [];
   room.robots = clone(room.startRobots);
   room.phase = 'executing';
   room.deadline = Date.now() + EXEC_MS;
@@ -201,6 +202,7 @@ function handleMove(room, p, robot, dir) {
   const [r0, c0] = room.robots[robot];
   const [r, c] = G.slide(room.board.walls, G.occupiedSet(room.robots, robot), r0, c0, dir);
   if (r === r0 && c === c0) return 'その方向には動けません';
+  room.history.push({ robot, from: [r0, c0] });
   room.robots[robot] = [r, c];
   room.movesUsed++;
   const g = room.goal;
@@ -272,6 +274,17 @@ wss.on('connection', (ws) => {
           if (room.skipVotes.has(me.id)) room.skipVotes.delete(me.id); else room.skipVotes.add(me.id);
           const need = room.players.filter((p) => p.connected);
           if (need.length && need.every((p) => room.skipVotes.has(p.id))) { clearTimeout(room.timer); beginExecution(room); }
+        }
+        break;
+      case 'undo':
+        if (room.phase === 'executing' && room.active === me.id) {
+          const h = room.history.pop();
+          if (h) { room.robots[h.robot] = h.from; room.movesUsed--; } else err = 'これ以上戻せません';
+        }
+        break;
+      case 'restart':
+        if (room.phase === 'executing' && room.active === me.id) {
+          room.robots = clone(room.startRobots); room.history = []; room.movesUsed = 0;
         }
         break;
       case 'giveup':
