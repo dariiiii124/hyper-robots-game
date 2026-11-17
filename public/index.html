@@ -142,7 +142,7 @@ function onState(m){
   S=m;
   if(first){$('join').classList.add('hidden');$('game').classList.remove('hidden')}
   if(prevPhase!==m.phase||first){selected=null;controlsKey=''}
-  if(m.bestN!==null){ if(myN>=m.bestN)myN=Math.max(m.minDecl,m.bestN-1) } else if(myN<m.minDecl) myN=m.minDecl;
+  {const own=m.decls.find(d=>d.id===m.you);const mx=own?own.n-1:99;if(myN>mx)myN=mx;if(myN<m.minDecl)myN=m.minDecl}
   if(m.phase==='thinking'&&prevPhase!=='thinking'&&m.bestN===null)myN=Math.max(m.minDecl,5);
   render();
 }
@@ -204,9 +204,9 @@ function renderControls(){
       ${isHost?`<button class="primary" id="bStart" style="width:100%;padding:14px">全員そろった → ゲーム開始 (${n}人)</button>`:'<div class="sub">ホストが開始するのを待っています…</div>'}
       <div style="margin-top:10px"><button id="bLeave" style="width:100%">この卓から退出する</button></div></div>`;
   }else if(ph==='thinking'||ph==='countdown'){
-    const maxN=S.bestN!==null?S.bestN-1:99;
+    const own=S.decls.find(d=>d.id===S.you);const maxN=own?own.n-1:99;
     const can=myN>=S.minDecl&&myN<=maxN;
-    html=`<div style="text-align:center" class="sub">${S.bestN===null?'最短手数が分かったら宣言!(最初の宣言で1分タイマー開始)':`現在の最短宣言: ${S.bestN}手 (${pname(S.decls[0]?S.decls[0].id:'')}) / それより少ない手数のみ宣言可`}</div>
+    html=`<div style="text-align:center" class="sub">${S.bestN===null?'最短手数が分かったら宣言!(最初の宣言で1分タイマー開始)':`現在の最短宣言: ${S.bestN}手 (${esc(pname(S.decls[0].id))}) ／ 手数の少ない順に挑戦します`}${own?`<br>あなたの宣言: ${own.n}手(自分の宣言より小さくだけ変更可)`:'<br>他の人より大きい手数でも宣言できます(保険)'}</div>
       ${S.directOne?'<div class="hint" style="color:#ffd166">※ 1手で直接ゴールできる配置です。2手以上の別ルートを探してください</div>':''}
       <div class="step"><button id="bMinus">−</button><div class="num" id="nNum">${myN}</div><button id="bPlus">＋</button></div>
       <button class="primary" id="bDecl" style="width:100%;padding:14px" ${can?'':'disabled'}>${myN}手で宣言する</button>
@@ -253,7 +253,7 @@ function bind(){
   if(q('bRestart'))q('bRestart').onclick=()=>send({t:'restart'});
   if(q('bGive'))q('bGive').onclick=()=>send({t:'giveup'});
   if(q('bMinus'))q('bMinus').onclick=()=>{myN=Math.max(S.minDecl,myN-1);controlsKey='';renderControls()};
-  if(q('bPlus'))q('bPlus').onclick=()=>{const mx=S.bestN!==null?S.bestN-1:99;myN=Math.min(mx,myN+1);controlsKey='';renderControls()};
+  if(q('bPlus'))q('bPlus').onclick=()=>{const o=S.decls.find(d=>d.id===S.you);const mx=o?o.n-1:99;myN=Math.min(mx,myN+1);controlsKey='';renderControls()};
   if(q('bDecl'))q('bDecl').onclick=()=>send({t:'declare',n:myN});
   document.querySelectorAll('.rb').forEach(b=>b.onclick=()=>{selected=b.dataset.c;controlsKey='';renderControls();requestDraw()});
   document.querySelectorAll('.dpad button').forEach(b=>b.onclick=()=>doMove(+b.dataset.d));

@@ -119,9 +119,10 @@ function declare(room, p, n) {
   if (!Number.isInteger(n) || n < 1 || n > 99) return '手数が不正です';
   const min = room.directOne ? 2 : 1;
   if (n < min) return '1手で直接ゴールできるので、別の経路(2手以上)を探してください';
-  if (room.bestN !== null && n >= room.bestN) return `${room.bestN}手より小さい手数のみ宣言できます`;
+  const mine = room.decls.get(p.id);
+  if (mine && n >= mine.n) return `自分の宣言(${mine.n}手)より小さい手数のみ宣言できます`;
   room.decls.set(p.id, { n, t: Date.now() });
-  room.bestN = n;
+  room.bestN = Math.min(...[...room.decls.values()].map((d) => d.n));
   room.skipVotes = new Set();
   room.msg = `${p.name}さんが ${n}手 を宣言!`;
   if (room.phase === 'thinking') {
@@ -133,7 +134,7 @@ function declare(room, p, n) {
 }
 
 function beginExecution(room) {
-  room.queue = [...room.decls.entries()].sort((a, b) => a[1].n - b[1].n).map(([id]) => id);
+  room.queue = [...room.decls.entries()].sort((a, b) => a[1].n - b[1].n || a[1].t - b[1].t).map(([id]) => id);
   room.msg = 'タイマー終了!';
   startTurn(room);
 }
