@@ -152,6 +152,8 @@ function pname(id){const p=S.players.find(p=>p.id===id);return p?p.name:'?'}
 
 // ---------- 画面 ----------
 function render(){
+  const lob=S.phase==='lobby';
+  ['board','status','players'].forEach(i=>$(i).classList.toggle('hidden',lob));
   $('roomName').textContent=S.room;
   $('roundInfo').textContent=S.board?`ラウンド${S.round} ・ 残りチップ${S.chipsLeft}`:'';
   renderPlayers();
@@ -192,9 +194,15 @@ function renderControls(){
   if(ph==='lobby'){
     const n=S.players.length;
     const win=n<=2?'8枚':n===3?'6枚':n===4?'5枚':'全チップが無くなるまで';
-    html=`<div style="text-align:center"><div style="font-size:16px;font-weight:700">参加者 ${n}人</div>
-      <div class="sub" style="margin:4px 0 10px">勝利条件(現在の人数): ${win}を先取り${n>=5?'':' (人数が変わると変化)'}<br>友達に合言葉「<b style="color:#fff">${esc(S.room)}</b>」を伝えて入ってもらおう</div>
-      ${isHost?'<button class="primary" id="bStart" style="width:100%;padding:14px">ゲーム開始</button>':'<div class="sub">ホストが開始するのを待っています…</div>'}</div>`;
+    html=`<div style="text-align:center">
+      <div class="sub">卓の合言葉</div>
+      <div style="font-size:30px;font-weight:800;margin:2px 0 8px;word-break:break-all">${esc(S.room)}</div>
+      <button id="bCopy" style="width:100%">招待文をコピー(URL+合言葉)</button>
+      <div style="text-align:left;margin:14px 0 4px;font-weight:700">参加者 ${n}人</div>
+      ${S.players.map(p=>`<div class="rank"><span>${p.id===S.hostId?'👑 ':''}${esc(p.name)}${p.id===S.you?'(あなた)':''}</span><span class="sub">${p.connected?'🟢 参加中':'⚪ 切断'}</span></div>`).join('')}
+      <div class="sub" style="margin:10px 0">勝利条件(現在の人数): ${win}を先取り${n>=5?'':'<br>※ 人数が変わると変化します'}</div>
+      ${isHost?`<button class="primary" id="bStart" style="width:100%;padding:14px">全員そろった → ゲーム開始 (${n}人)</button>`:'<div class="sub">ホストが開始するのを待っています…</div>'}
+      <div style="margin-top:10px"><button id="bLeave" style="width:100%">この卓から退出する</button></div></div>`;
   }else if(ph==='thinking'||ph==='countdown'){
     const maxN=S.bestN!==null?S.bestN-1:99;
     const can=myN>=S.minDecl&&myN<=maxN;
@@ -223,6 +231,7 @@ function renderControls(){
       arr.map((p,i)=>`<div class="rank"><span>${i+1}位 ${esc(p.name)}</span><b>${p.score}枚</b></div>`).join('')+
       (isHost?'<button class="primary" id="bAgain" style="width:100%;padding:14px;margin-top:10px">ロビーに戻る(もう一度)</button>':'<div class="sub" style="text-align:center;margin-top:8px">ホストの操作を待っています</div>');
   }
+  if(isHost&&ph!=='lobby'&&ph!=='gameEnd')html+='<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px"><button id="bHome" style="width:100%;font-size:13px">ゲームを中断して卓のホームに戻る(ホスト)</button></div>';
   const key=ph+'|'+html;
   if(key===controlsKey)return;
   // 数字ステップ操作中は全体再描画を避けるため、キー不一致時のみ再構築
@@ -235,6 +244,9 @@ function bind(){
   if(q('bStart'))q('bStart').onclick=()=>send({t:'start'});
   if(q('bAgain'))q('bAgain').onclick=()=>send({t:'lobby'});
   if(q('bSkip'))q('bSkip').onclick=()=>{if(confirm('このチップをスキップしますか?'))send({t:'skip'})};
+  if(q('bHome'))q('bHome').onclick=()=>{if(confirm('ゲームを中断して卓のホームに戻ります。スコアはリセットされます。よろしいですか?'))send({t:'lobby'})};
+  if(q('bCopy'))q('bCopy').onclick=()=>{const t=`ハイパーロボットやろう!\n${location.href}\n合言葉: ${S.room}`;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('コピーしました')).catch(()=>{prompt('コピーして送ってください',t)})};
+  if(q('bLeave'))q('bLeave').onclick=()=>{joinInfo=null;try{ws.close()}catch(e){}S=null;prevRobots=null;$('game').classList.add('hidden');$('join').classList.remove('hidden')};
   if(q('bVote'))q('bVote').onclick=()=>send({t:'skiptimer'});
   if(q('bGive'))q('bGive').onclick=()=>send({t:'giveup'});
   if(q('bMinus'))q('bMinus').onclick=()=>{myN=Math.max(S.minDecl,myN-1);controlsKey='';renderControls()};

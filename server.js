@@ -282,12 +282,14 @@ wss.on('connection', (ws) => {
         else if (room.phase === 'thinking' || room.phase === 'countdown') endRound(room, null, 'このチップはスキップされました');
         break;
       case 'lobby':
-        if (me.id === room.hostId && room.phase === 'gameEnd') {
+        if (me.id === room.hostId && room.phase !== 'lobby') {
           clearTimeout(room.timer);
           room.phase = 'lobby'; room.board = null; room.robots = null; room.goal = null;
+          room.decls = new Map(); room.queue = []; room.active = null; room.bestN = null; room.deadline = 0; room.roundResult = null; room.skipVotes = new Set(); room.round = 0;
           room.players.forEach((p) => (p.score = 0));
           room.msg = '';
           room.players = room.players.filter((p) => p.connected);
+          if (!room.players.some((p) => p.id === room.hostId)) room.hostId = room.players[0] ? room.players[0].id : null;
         }
         break;
     }
