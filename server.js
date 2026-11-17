@@ -74,21 +74,19 @@ function startGame(room) {
   startRound(room);
 }
 
-// 残りチップの最短手数を調べ、5〜8手くらいの歯ごたえのあるものを優先して出す(前回と同じ手数は避ける)
+// 残りチップの最短手数を調べ、最短6手以上のものからランダムに出す
 function pickGoal(room) {
   const info = room.deck.map((idx, pos) => {
     const t = room.board.targets[idx];
     const blocked = G.COLORS.some((c) => room.robots[c][0] === t.r && room.robots[c][1] === t.c && (t.color === 'wild' || t.color === c));
-    return { pos, t, blocked, L: blocked ? -1 : G.solveLen(room.board, room.robots, t, 9, 400) };
+    return { pos, t, blocked, L: blocked ? -1 : G.solveLen(room.board, room.robots, t, 11, 400) };
   });
   const ok = info.filter((x) => !x.blocked && x.L > 0);
-  const pool = (list) => { const d = list.filter((x) => x.L !== room.lastOpt); return d.length ? d : list; };
+  // 最短5手以下は除外し、6手以上(確認できたもの)からランダム。見つからなければ一番長いものを使う
+  const hard = ok.filter((x) => x.L >= 6);
   let pick;
-  const band = ok.filter((x) => x.L >= 5 && x.L <= 8);
-  const hard = ok.filter((x) => x.L >= 5);
-  if (band.length) pick = pool(band);
-  else if (hard.length) pick = pool(hard);
-  else if (ok.length) pick = pool(ok.filter((x) => x.L === Math.max(...ok.map((y) => y.L))));
+  if (hard.length) pick = hard;
+  else if (ok.length) pick = ok.filter((x) => x.L === Math.max(...ok.map((y) => y.L)));
   else pick = info.filter((x) => !x.blocked).length ? info.filter((x) => !x.blocked) : info;
   const c = pick[Math.floor(Math.random() * pick.length)];
   room.deck.splice(c.pos, 1);
